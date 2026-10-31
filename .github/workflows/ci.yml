@@ -1,0 +1,34 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 6 * * 1"   # weekly, to catch examples broken by upstream package changes
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    outputs:
+      solutions: ${{ steps.find.outputs.solutions }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: find
+        run: |
+          list=$(find examples -maxdepth 2 \( -name '*.sln' -o -name '*.slnx' \) | sort | jq -R -s -c 'split("\n")[:-1]')
+          echo "solutions=$list" >> "$GITHUB_OUTPUT"
+
+  test:
+    needs: discover
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        solution: ${{ fromJson(needs.discover.outputs.solutions) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - run: dotnet test "${{ matrix.solution }}" --nologo
