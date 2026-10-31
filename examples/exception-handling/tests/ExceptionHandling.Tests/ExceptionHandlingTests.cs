@@ -1,37 +1,49 @@
 using System.Net;
-using System.Net.Http.Json;
-using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace ExceptionHandling.Tests;
 
-public class ExceptionHandlingTests(WebApplicationFactory<Program> factory) : IClassFixture<WebApplicationFactory<Program>>
+public class ExceptionHandlingTests(WebApplicationFactory<Program> factory) : ApiTestBase(factory)
 {
-    private readonly HttpClient _client = factory.CreateClient();
-
     [Fact]
-    public async Task Domain_exception_becomes_its_own_status_and_title()
+    public async Task GivenMissingOrder_WhenGettingOrder_ThenReturnsNotFoundWithDomainTitle()
     {
-        var response = await _client.GetAsync("/orders/42");
+        var (response, body) = await GetProblemAsync("/orders/42");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("Order not found", body.GetProperty("title").GetString());
         Assert.Equal("Order 42 does not exist.", body.GetProperty("detail").GetString());
     }
 
     [Fact]
-    public async Task Different_domain_exception_uses_same_handler_with_other_status()
+    public async Task GivenExistingOrder_WhenGettingOrder_ThenReturnsOk()
     {
-        var response = await _client.GetAsync("/quantity/-5");
+        var response = await Client.GetAsync("/orders/1");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GivenNegativeQuantity_WhenGettingQuantity_ThenSameHandlerReturnsBadRequest()
+    {
+        var response = await Client.GetAsync("/quantity/-5");
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     [Fact]
-    public async Task Unexpected_exception_falls_through_to_global_handler_without_leaking_details()
+    public async Task GivenValidQuantity_WhenGettingQuantity_ThenReturnsOkWithoutTouchingHandlers()
     {
-        var response = await _client.GetAsync("/boom");
+        var response = await Client.GetAsync("/quantity/5");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("5", await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task GivenUnexpectedException_WhenCallingBoom_ThenGlobalHandlerReturns500WithoutLeakingDetails()
+    {
+        var response = await Client.GetAsync("/boom");
 
         Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
         var text = await response.Content.ReadAsStringAsync();
@@ -40,28 +52,29 @@ public class ExceptionHandlingTests(WebApplicationFactory<Program> factory) : IC
     }
 
     [Fact]
-    public async Task Problem_details_include_customized_trace_id()
+    public async Task GivenHandledError_WhenReadingProblemDetails_ThenIncludesCustomizedTraceId()
     {
-        var response = await _client.GetAsync("/orders/42");
+        var (_, body) = await GetProblemAsync("/orders/42");
 
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.False(string.IsNullOrEmpty(body.GetProperty("traceId").GetString()));
     }
 
     [Fact]
-    public async Task Unknown_route_gets_problem_details_from_status_code_pages()
+    public async Task GivenActivityTracingEnabled_WhenHandlingError_ThenTraceIdIsTheW3cActivityId()
     {
-        var response = await _client.GetAsync("/nope");
+        using var tracing = new ActivityTracingScope();
 
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
-        Assert.Equal("application/problem+json", response.Content.Headers.ContentType!.MediaType);
+        var (_, body) = await GetProblemAsync("/orders/42");
+
+        Assert.StartsWith("00-", body.GetProperty("traceId").GetString());
     }
 
     [Fact]
-    public async Task Success_path_is_unaffected()
+    public async Task GivenUnknownRoute_WhenRequesting_ThenStatusCodePagesReturnProblemDetails()
     {
-        var response = await _client.GetAsync("/orders/1");
+        var response = await Client.GetAsync("/nope");
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType!.MediaType);
     }
 }

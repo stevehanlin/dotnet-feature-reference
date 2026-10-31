@@ -10,8 +10,8 @@ public static class ErrorHandlingExtensions
         services.AddProblemDetails(options =>
             options.CustomizeProblemDetails = context =>
             {
-                var traceId = Activity.Current?.Id ?? context.HttpContext.TraceIdentifier;
-                context.ProblemDetails.Extensions["traceId"] = traceId;
+                context.ProblemDetails.Extensions["traceId"] =
+                    ResolveTraceId(Activity.Current, context.HttpContext.TraceIdentifier);
             });
 
         // Order matters: specific handlers first, the catch-all last.
@@ -20,6 +20,10 @@ public static class ErrorHandlingExtensions
 
         return services;
     }
+
+    /// <summary>Prefers the W3C activity id (correlates with distributed traces); falls back to ASP.NET's per-request id.</summary>
+    public static string ResolveTraceId(Activity? activity, string fallbackTraceIdentifier) =>
+        activity?.Id ?? fallbackTraceIdentifier;
 
     public static WebApplication UseAppErrorHandling(this WebApplication app)
     {
