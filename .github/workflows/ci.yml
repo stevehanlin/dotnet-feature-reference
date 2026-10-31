@@ -31,4 +31,32 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
-      - run: dotnet test "${{ matrix.solution }}" --nologo
+      - name: Test with coverage
+        run: >
+          dotnet test "${{ matrix.solution }}" --nologo
+          --collect:"XPlat Code Coverage"
+          --results-directory "$RUNNER_TEMP/TestResults"
+      - name: Build coverage report
+        if: always()
+        run: |
+          dotnet tool install --global dotnet-reportgenerator-globaltool --version 5.4.1
+          reportgenerator \
+            -reports:"$RUNNER_TEMP/TestResults/**/coverage.cobertura.xml" \
+            -targetdir:coverage \
+            -reporttypes:"MarkdownSummaryGithub;Html" \
+            -assemblyfilters:"-*.Tests"
+      - name: Publish coverage summary
+        id: summary
+        if: always()
+        run: |
+          name=$(basename "$(dirname "${{ matrix.solution }}")")
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "## Coverage: $name" >> "$GITHUB_STEP_SUMMARY"
+          cat coverage/SummaryGithub.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload HTML coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ steps.summary.outputs.name }}
+          path: coverage
+          retention-days: 14
