@@ -13,7 +13,7 @@ jobs:
     outputs:
       solutions: ${{ steps.find.outputs.solutions }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - id: find
         run: |
           list=$(find examples -maxdepth 2 \( -name '*.sln' -o -name '*.slnx' \) | sort | jq -R -s -c 'split("\n")[:-1]')
@@ -27,7 +27,7 @@ jobs:
       matrix:
         solution: ${{ fromJson(needs.discover.outputs.solutions) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
