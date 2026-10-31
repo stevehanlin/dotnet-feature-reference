@@ -1,46 +1,31 @@
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Time.Testing;
 using ExtensionMethodsDi.Api;
 
 namespace ExtensionMethodsDi.Tests;
 
-public class ExtensionTests
+public class ExtensionTests : AppTestBase
 {
     [Fact]
-    public async Task Greeter_uses_configured_greeting_and_replaceable_clock()
+    public async Task GivenFakeClockRegisteredLast_WhenGreeting_ThenGreeterUsesConfiguredGreetingAndFakeTime()
     {
-        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 1, 1, 9, 30, 0, TimeSpan.Zero));
-        await using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
-            b.ConfigureServices(s => s.AddSingleton<TimeProvider>(clock)));   // registered last, so it wins
+        var client = CreateClient(WithClockAt("2026-01-01T09:30:00Z"));
 
-        using var client = factory.CreateClient();
-        var text = await client.GetStringAsync("/greet/Ada");
-
-        Assert.Equal("Hello, Ada! (09:30 UTC)", text);
+        Assert.Equal("Hello, Ada! (09:30 UTC)", await client.GetStringAsync("/greet/Ada"));
     }
 
     [Fact]
-    public async Task Audit_prefix_comes_from_configuration()
+    public async Task GivenAuditPrefixInConfiguration_WhenFormattingAuditMessage_ThenUsesConfiguredPrefix()
     {
-        await using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
-            b.ConfigureAppConfiguration((_, c) => c.AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["AuditLog:Prefix"] = "SEC",
-            })));
-
-        using var client = factory.CreateClient();
+        var client = CreateClient(WithSetting("AuditLog:Prefix", "SEC"));
 
         Assert.Equal("[SEC] login", await client.GetStringAsync("/audit/login"));
     }
 
     [Fact]
-    public async Task Middleware_extension_stamps_responses()
+    public async Task GivenAnyRequest_WhenPassingThroughPipeline_ThenMiddlewareExtensionStampsResponse()
     {
-        await using var factory = new WebApplicationFactory<Program>();
-        using var client = factory.CreateClient();
+        var client = CreateClient();
 
         var response = await client.GetAsync("/greet/Ada");
 
@@ -48,7 +33,7 @@ public class ExtensionTests
     }
 
     [Fact]
-    public void Extension_property_reports_registration()
+    public void GivenEmptyAndConfiguredCollections_WhenCheckingHasGreeter_ThenExtensionPropertyReflectsRegistration()
     {
         var empty = new ServiceCollection();
         var configured = new ServiceCollection().AddGreeter();
@@ -58,10 +43,10 @@ public class ExtensionTests
     }
 
     [Fact]
-    public void Static_extension_member_is_callable_on_the_type()
+    public void GivenWebApplicationBuilderType_WhenCallingStaticExtensionMember_ThenRegistersTimeProvider()
     {
         var builder = WebApplicationBuilder.CreateWithDefaults([]);
 
-        Assert.Contains(builder.Services, d => d.ServiceType == typeof(TimeProvider));
+        Assert.Contains(builder.Services, descriptor => descriptor.ServiceType == typeof(TimeProvider));
     }
 }
