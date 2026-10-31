@@ -1,19 +1,16 @@
 using System.Net;
 using System.Net.Http.Json;
-using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 using ResultProblemDetails.Api;
 
 namespace ResultProblemDetails.Tests;
 
-public class ProductEndpointTests(WebApplicationFactory<Program> factory) : IClassFixture<WebApplicationFactory<Program>>
+public class ProductEndpointTests(WebApplicationFactory<Program> factory) : ApiTestBase(factory)
 {
-    private readonly HttpClient _client = factory.CreateClient();
-
     [Fact]
-    public async Task Create_returns_201_with_location()
+    public async Task GivenValidRequest_WhenCreatingProduct_ThenReturnsCreatedWithLocation()
     {
-        var response = await _client.PostAsJsonAsync("/products", new CreateProductRequest("Widget-A", 9.99m));
+        var response = await PostProductAsync();
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var product = await response.Content.ReadFromJsonAsync<Product>();
@@ -21,34 +18,45 @@ public class ProductEndpointTests(WebApplicationFactory<Program> factory) : ICla
     }
 
     [Fact]
-    public async Task Get_unknown_product_returns_404_problem_details()
+    public async Task GivenUnknownId_WhenGettingProduct_ThenReturnsNotFoundProblemDetails()
     {
-        var response = await _client.GetAsync($"/products/{Guid.NewGuid()}");
+        var response = await Client.GetAsync($"/products/{Guid.NewGuid()}");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         Assert.Equal("application/problem+json", response.Content.Headers.ContentType!.MediaType);
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await ReadJsonAsync(response);
         Assert.Equal("Product.NotFound", body.GetProperty("title").GetString());
         Assert.Equal(404, body.GetProperty("status").GetInt32());
     }
 
     [Fact]
-    public async Task Create_with_invalid_input_returns_400_validation_problem()
+    public async Task GivenExistingProduct_WhenGettingProduct_ThenReturnsOkWithProduct()
     {
-        var response = await _client.PostAsJsonAsync("/products", new CreateProductRequest("", -1));
+        var created = await CreateProductAsync();
+
+        var response = await Client.GetAsync($"/products/{created.Id}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(created, await response.Content.ReadFromJsonAsync<Product>());
+    }
+
+    [Fact]
+    public async Task GivenInvalidRequest_WhenCreatingProduct_ThenReturnsValidationProblemPerField()
+    {
+        var response = await Client.PostAsJsonAsync("/products", new CreateProductRequest("", -1));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
-        var errors = body.GetProperty("errors");
+        var errors = (await ReadJsonAsync(response)).GetProperty("errors");
         Assert.True(errors.TryGetProperty("Name", out _));
         Assert.True(errors.TryGetProperty("Price", out _));
     }
 
     [Fact]
-    public async Task Create_duplicate_returns_409()
+    public async Task GivenDuplicateName_WhenCreatingProduct_ThenReturnsConflict()
     {
-        await _client.PostAsJsonAsync("/products", new CreateProductRequest("Widget-Dup", 5m));
-        var response = await _client.PostAsJsonAsync("/products", new CreateProductRequest("widget-dup", 5m));
+        var existing = await CreateProductAsync();
+
+        var response = await PostProductAsync(existing.Name.ToUpperInvariant());
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
     }
