@@ -14,6 +14,7 @@ Every folder under [`examples/`](examples) is **independent**: it has its own so
 | Records | Positional records, `with`, record structs, hierarchies, gotchas | [examples/records](examples/records) |
 | Extension methods for DI | `AddXxx` composition and C# 14 extension members | [examples/extension-methods-di](examples/extension-methods-di) |
 | Custom TimeProvider | A `TimeProvider` subclass with a fixed business time zone, tested with `FakeTimeProvider` | [examples/custom-time-provider](examples/custom-time-provider) |
+| HttpClient factory | Basic, named, typed, typed + interface and keyed clients, delegating handlers, pros/cons | [examples/http-client-factory](examples/http-client-factory) |
 
 ## Using an example
 
